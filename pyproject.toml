@@ -12,6 +12,7 @@ dependencies = [
     "imageio",
     "tqdm",
     "matplotlib",
+    "streamlit",
 ]
 
 [project.optional-dependencies]
@@ -20,3 +21,6 @@ dev = ["pre-commit"]
 [build-system]
 requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = []
