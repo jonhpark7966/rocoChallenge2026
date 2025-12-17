@@ -15,66 +15,54 @@ import time
 
 SCENARIOS = [
     {
-        "desc": "Reset edge with clutch off (should hold)",
+        "desc": "Left arm pose",
         "packet": {
             "v": 1,
             "type": "ee_targets",
             "seq": 1,
             "t": 0.0,
             "frame": "torso",
-            "clutch": 0,
-            "precision": 0,
-            "reset": 1,
             "arms": [
-                {"id": "L", "ee_frame": "left_gripper_tcp", "p": [0.4, 0.1, 0.85], "q": [1, 0, 0, 0], "grip": 1.0, "mode": "free"}
+                {"id": "L", "ee_frame": "left_gripper_tcp", "p": [0.4, 0.1, 0.85], "q": [1, 0, 0, 0], "grip": 1.0}
             ],
         },
     },
     {
-        "desc": "Free mode, clutch on, left arm open grip",
+        "desc": "Left arm moved + open grip",
         "packet": {
             "v": 1,
             "type": "ee_targets",
             "seq": 2,
             "t": 0.0,
             "frame": "torso",
-            "clutch": 1,
-            "precision": 0,
-            "reset": 0,
             "arms": [
-                {"id": "L", "ee_frame": "left_gripper_tcp", "p": [0.45, 0.1, 0.90], "q": [0.98, 0.0, 0.2, 0.0], "grip": 1.0, "mode": "free"}
+                {"id": "L", "ee_frame": "left_gripper_tcp", "p": [0.45, 0.1, 0.90], "q": [0.98, 0.0, 0.2, 0.0], "grip": 1.0}
             ],
         },
     },
     {
-        "desc": "Insert mode, precision on, right arm closing grip",
+        "desc": "Right arm with grip 0.3",
         "packet": {
             "v": 1,
             "type": "ee_targets",
             "seq": 3,
             "t": 0.0,
             "frame": "torso",
-            "clutch": 1,
-            "precision": 1,
-            "reset": 0,
             "arms": [
-                {"id": "R", "ee_frame": "right_gripper_tcp", "p": [0.4, -0.1, 0.82], "q": [0.99, 0.0, 0.05, 0.0], "grip": 0.3, "mode": "insert"}
+                {"id": "R", "ee_frame": "right_gripper_tcp", "p": [0.4, -0.1, 0.82], "q": [0.99, 0.0, 0.05, 0.0], "grip": 0.3}
             ],
         },
     },
     {
-        "desc": "Rotate mode roll twist",
+        "desc": "Right arm roll twist",
         "packet": {
             "v": 1,
             "type": "ee_targets",
             "seq": 4,
             "t": 0.0,
             "frame": "torso",
-            "clutch": 1,
-            "precision": 0,
-            "reset": 0,
             "arms": [
-                {"id": "R", "ee_frame": "right_gripper_tcp", "p": [0.4, -0.1, 0.82], "q": [0.96, 0.0, 0.0, 0.28], "grip": 0.3, "mode": "rotate"}
+                {"id": "R", "ee_frame": "right_gripper_tcp", "p": [0.4, -0.1, 0.82], "q": [0.96, 0.0, 0.0, 0.28], "grip": 0.3}
             ],
         },
     },

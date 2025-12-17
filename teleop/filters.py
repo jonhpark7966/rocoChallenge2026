@@ -1,5 +1,5 @@
 """
-Pose/grip filtering and gating for ee_targets v1.
+Pose/grip filtering for ee_targets v1.
 
 This layer consumes validated packets from `EETargetsReceiver` and produces
 per-arm pose targets that are ready for downstream IK.
@@ -25,19 +25,12 @@ class ArmPoseCommand:
     p: Vec3
     q: Quat
     grip: float
-    mode: str
     precision: bool
-    clutch: bool
-    reset_edge: bool
     frame: str
 
 
 class PoseCommandFilter:
-    """
-    Maintains filtered targets per arm with clutch/timeout/reset semantics.
-
-    Intended to be followed by a robot-specific IK module.
-    """
+    """Maintains filtered targets per arm (timeout + smoothing)."""
 
     def __init__(
         self,
@@ -65,40 +58,20 @@ class PoseCommandFilter:
         except Exception:
             return None
 
-    def update(self, state, reset_edge: bool) -> List[ArmPoseCommand]:
+    def update(self, state) -> List[ArmPoseCommand]:
         now = time.time()
-        dt = max(now - self._last_time, 1e-3)
         self._last_time = now
 
         if state is None:
             # Timeout: hold last
             return list(self._last.values())
 
-        clutch_on = bool(state.clutch)
         precision_on = bool(state.precision)
         frame = state.frame
 
         out: List[ArmPoseCommand] = []
         for arm in state.arms:
             prev = self._last.get(arm.id)
-
-            # Reset snaps the internal target to the robot's current pose
-            if reset_edge:
-                snap = self._snap_to_current(arm.id)
-                if snap:
-                    p_snap, q_snap = snap
-                    prev = ArmPoseCommand(
-                        id=arm.id,
-                        ee_frame=arm.ee_frame,
-                        p=p_snap,
-                        q=quat_normalize(q_snap),
-                        grip=arm.grip,
-                        mode=arm.mode,
-                        precision=precision_on,
-                        clutch=clutch_on,
-                        reset_edge=True,
-                        frame=frame,
-                    )
 
             if prev is None:
                 prev = ArmPoseCommand(
@@ -107,10 +80,7 @@ class PoseCommandFilter:
                     p=arm.p,
                     q=quat_normalize(arm.q),
                     grip=arm.grip,
-                    mode=arm.mode,
                     precision=precision_on,
-                    clutch=clutch_on,
-                    reset_edge=reset_edge,
                     frame=frame,
                 )
 
@@ -131,14 +101,10 @@ class PoseCommandFilter:
                 p=p_filtered,
                 q=q_filtered,
                 grip=grip_target,
-                mode=arm.mode,
                 precision=precision_on,
-                clutch=clutch_on,
-                reset_edge=reset_edge,
                 frame=frame,
             )
-            if clutch_on:
-                self._last[arm.id] = cmd
-            out.append(cmd if clutch_on else prev)
+            self._last[arm.id] = cmd
+            out.append(cmd)
 
         return out

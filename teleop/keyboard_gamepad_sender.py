@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import select
 import socket
 import sys
@@ -19,7 +20,12 @@ import time
 import tty
 from typing import Dict, Optional
 
-from .math_utils import quat_from_axis_angle, quat_multiply, quat_normalize
+# Allow running as a standalone script (without installing teleop as a package)
+if __package__ is None or __package__ == "":
+    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+    from math_utils import quat_from_axis_angle, quat_multiply, quat_normalize
+else:
+    from .math_utils import quat_from_axis_angle, quat_multiply, quat_normalize
 
 try:
     import pygame  # type: ignore
@@ -97,22 +103,18 @@ def poll_gamepad(pad, pos_step: float, rot_step: float, grip_step: float, state,
         state[active_arm]["grip"] = clamp(state[active_arm]["grip"] + grip_step, 0.0, 1.0)
     if buttons.get(5):  # RB
         state[active_arm]["grip"] = clamp(state[active_arm]["grip"] - grip_step, 0.0, 1.0)
-    clutch = 1 if buttons.get(0) else 0  # A
     precision = 1 if buttons.get(1) else 0  # B
-    reset = 1 if buttons.get(2) else 0  # X
-    return clutch, precision, reset
+    return precision
 
 
-def build_packet(seq: int, frame: str, clutch: int, precision: int, reset: int, state: Dict) -> Dict:
+def build_packet(seq: int, frame: str, precision: int, state: Dict) -> Dict:
     return {
         "v": 1,
         "type": "ee_targets",
         "seq": seq,
         "t": time.time(),
         "frame": frame,
-        "clutch": clutch,
         "precision": precision,
-        "reset": reset,
         "arms": [
             {
                 "id": arm_id,
@@ -120,7 +122,6 @@ def build_packet(seq: int, frame: str, clutch: int, precision: int, reset: int, 
                 "p": arm_state["p"],
                 "q": arm_state["q"],
                 "grip": arm_state["grip"],
-                "mode": arm_state["mode"],
             }
             for arm_id, arm_state in sorted(state.items())
         ],
@@ -137,20 +138,17 @@ def main():
     parser.add_argument("--rot-step-deg", type=float, default=2.0, help="Rotation increment per keypress (deg)")
     parser.add_argument("--grip-step", type=float, default=0.05, help="Grip increment per input (0..1)")
     parser.add_argument("--start-arm", default="L", choices=["L", "R"], help="Active arm at start")
-    parser.add_argument("--mode", default="free", choices=["free", "insert", "rotate"], help="Default mode for both arms")
     args = parser.parse_args()
 
     rot_step = math.radians(args.rot_step_deg)
     seq = 0
     dest = (args.ip, args.port)
     active_arm = args.start_arm
-    clutch = 0
     precision = 0
-    reset_flag = 0
 
     arms_state: Dict[str, Dict] = {
-        "L": {"p": [0.45, 0.10, 0.85], "q": [1.0, 0.0, 0.0, 0.0], "grip": 1.0, "mode": args.mode, "ee_frame": "left_gripper_tcp"},
-        "R": {"p": [0.45, -0.10, 0.85], "q": [1.0, 0.0, 0.0, 0.0], "grip": 1.0, "mode": args.mode, "ee_frame": "right_gripper_tcp"},
+        "L": {"p": [0.45, 0.10, 0.85], "q": [1.0, 0.0, 0.0, 0.0], "grip": 1.0, "ee_frame": "left_gripper_tcp"},
+        "R": {"p": [0.45, -0.10, 0.85], "q": [1.0, 0.0, 0.0, 0.0], "grip": 1.0, "ee_frame": "right_gripper_tcp"},
     }
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -164,8 +162,7 @@ def main():
         else:
             print("[INFO] pygame not installed; gamepad disabled. Install pygame if needed.")
 
-    print("Controls: Tab toggle arm, Space clutch toggle, P precision toggle, Backspace reset (edge),")
-    print("          WASD=XY, E/Q=Z, J/L=Yaw, I/K=Pitch, U/O=Roll, Z/X=Grip +/-")
+    print("Controls: Tab toggle arm, P precision toggle, WASD=XY, E/Q=Z, J/L=Yaw, I/K=Pitch, U/O=Roll, Z/X=Grip +/-")
 
     try:
         with _RawStdin():
@@ -178,15 +175,9 @@ def main():
                     elif key == "\t":
                         active_arm = "R" if active_arm == "L" else "L"
                         print(f"[ACTIVE] {active_arm}")
-                    elif key == " ":
-                        clutch = 0 if clutch else 1
-                        print(f"[CLUTCH] {clutch}")
                     elif key.lower() == "p":
                         precision = 0 if precision else 1
                         print(f"[PRECISION] {precision}")
-                    elif key == "\x7f":  # Backspace
-                        reset_flag = 1
-                        print("[RESET] edge")
                     elif key in ("w", "W"):
                         apply_translation(arms_state, active_arm, 0.0, args.pos_step, 0.0)
                     elif key in ("s", "S"):
@@ -216,9 +207,9 @@ def main():
                     elif key in ("x", "X"):
                         arms_state[active_arm]["grip"] = clamp(arms_state[active_arm]["grip"] - args.grip_step, 0.0, 1.0)
 
-                pad_clutch = pad_precision = pad_reset = 0
+                pad_precision = 0
                 if gamepad:
-                    pad_clutch, pad_precision, pad_reset = poll_gamepad(
+                    pad_precision = poll_gamepad(
                         gamepad,
                         args.pos_step * (0.5 if precision else 1.0),
                         rot_step * (0.5 if precision else 1.0),
@@ -226,14 +217,11 @@ def main():
                         arms_state,
                         active_arm,
                     )
-                clutch = pad_clutch or clutch
                 precision = pad_precision or precision
-                reset_flag = pad_reset or reset_flag
 
-                packet = build_packet(seq, args.frame, clutch, precision, reset_flag, arms_state)
+                packet = build_packet(seq, args.frame, precision, arms_state)
                 sock.sendto(json.dumps(packet).encode("utf-8"), dest)
                 seq += 1
-                reset_flag = 0  # edge-triggered
 
                 elapsed = time.time() - start
                 to_sleep = send_period - elapsed

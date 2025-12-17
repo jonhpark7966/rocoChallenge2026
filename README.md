@@ -29,7 +29,7 @@ git submodule update --remote --merge submodules/IsaacLab
 
 ### Data (not in git)
 - Source: Hugging Face `rocochallenge2025/rocochallenge2025`.
-- 다운로드/프리뷰: `python scripts/roco_hdf5_viewer.py gearbox_assembly_demos/data_20251127_212217.hdf5 --seconds 5`
+- 빠른 구조/프리뷰: `python scripts/roco_hdf5_viewer.py gearbox_assembly_demos/data_20251127_212217.hdf5 --seconds 5`
 - 캐시/출력 기본 경로: `data/cache`, `data/exports` (ignored).
 
 필요 내용은 이후에 추가합니다.
