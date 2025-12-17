@@ -1,27 +1,47 @@
-# Teleoperation bring-up
+# Teleoperation plan
 
-Goal: simplify first and prove that UDP teleop packets arrive. No IK or arm motion yet.
+## Goals
+- Drive the Galaxea arms and parallel grippers from a single UDP message format (`ee_targets` v1) regardless of input device.
+- Keep the agent launch UX identical to the other `*_agent.py` scripts (`--task` from `list_envs.py`, `--num_envs`, renderer flags).
+- Build in small, testable steps: first prove packet ingress, then gripper-only actuation, then full 6DoF EE tracking.
 
-## Plan (staged)
-- Stage 1 (now): launch Isaac Lab env, step with zero actions, log every UDP ee_targets packet.
-- Stage 2 (next): wire the parsed packets into robot commands (precision/IK).
-- Stage 3 (later): polish device UX, filtering, and add automated tests.
+## Current state (arms + grippers via IK)
+- `scripts/teleop_agent.py` mirrors `random_agent.py` bring-up, stubs any built-in `rule_policy`, and **waits for the first UDP packet** before stepping.
+- UDP receiver: `teleop_utils/ee_targets.py` parses `ee_targets` v1 and drops stale packets; filtering via `teleop_utils/filters.PoseCommandFilter`.
+- Applied control: per-arm Differential IK (target link6) with gripper open/close (0..1 scaled to ~0.04 m). Supported frames: `world` (direct) and `torso` (transformed from robot root); others log a warning and are treated as world.
+- Logs: every new `seq` prints frame/precision plus per-arm XYZ/quat/grip, plus 5 s heartbeats showing last packet age/seq. First packet gate keeps the sim paused until data arrives.
 
-## Stage 1: UDP-only smoke test
-1) Launch the minimal receiver + env (same CLI shape as the other *_agent scripts):  
-`python submodules/gearboxAssembly/scripts/teleop_agent.py --task Template-Galaxea-Lab-External-Direct-v0 --num_envs 1 [--renderer RayTracedLighting ...]`  
-What you should see in the console: observation/action spaces, `[UDP] Listening on ...`, and a `[HEARTBEAT]` every ~5 s showing packet counts.
-   - It stubs out the built-in `rule_policy` so nothing scripted moves and waits for the first UDP packet before stepping.
-2) Send canned packets to prove the UDP path:  
-`python teleop/test_hardcoded_sender.py --ip 127.0.0.1 --port 5005 --delay 0.5`  
-Expected on the teleop terminal: one `[UDP] seq=... arms=[...] from ('127.0.0.1', <port>)` per packet, then heartbeats like `udp_packets=4, last_seq=4`.
-3) (Optional) Drive packets from a keyboard/gamepad to see higher rates (still logging only):  
-`python teleop/keyboard_gamepad_sender.py --ip 127.0.0.1 --port 5005 --rate 60 --frame torso`  
-Keyboard controls: Tab arm L/R, P precision toggle, WASD XY, E/Q Z, J/L yaw, I/K pitch, U/O roll, Z/X grip +/-.
-Gamepad (pygame required, auto-detected): left stick XY, triggers drive ±Z and roll, right stick yaw/pitch, `B` precision, `LB/RB` grip +/-.
-4) Troubleshooting: if no `[UDP]` lines appear, double-check IP/port/firewall; use `--log_payload` on teleop_agent to print full JSON for each datagram.
+## Usage (today)
+1) Launch the teleop agent (same shape as other agents):
+```
+python submodules/gearboxAssembly/scripts/teleop_agent.py \
+  --task Template-Galaxea-Lab-External-Direct-v0 --num_envs 1 [--renderer RayTracedLighting ...]
+```
+Expected: observation/action space prints, `[INFO] teleop rule_policy installed (arms + grippers via IK).`, `[UDP] ...` then heartbeats while it waits. A state responder listens on `--state_port` (default 5006) for `ee_state_request` and replies with current world-frame EE poses + grippers.
 
-Notes
-- The receiver listens on `0.0.0.0:5005` by default and steps the sim with zero actions so we can focus solely on UDP ingress.
-- Packet schema used by the senders (`teleop/test_hardcoded_sender.py`, `teleop/keyboard_gamepad_sender.py`) is ee_targets v1:  
-`{v:1,type:"ee_targets",seq:int,t:float,frame:str,precision:int,arms:[{id:"L|R",ee_frame:"<tcp>",p:[x,y,z],q:[w,x,y,z],grip:0..1}]}` (precision optional)
+2) Smoke-test UDP ingress with canned packets:
+```
+python teleop/test_hardcoded_sender.py --ip 127.0.0.1 --port 5005 --delay 0.5
+```
+Teleop terminal should print per-arm XYZ/quat/grip per packet, then heartbeats with `last_seq`.
+
+3) Keyboard/gamepad sender for manual packets (arms and grip applied, seeded from live state):
+```
+python teleop/keyboard_gamepad_sender.py --ip 127.0.0.1 --port 5005 --state-port 5006 --rate 60 --frame torso
+```
+On startup the sender asks the agent for `ee_state` and uses that as its baseline (prevents arm drop); if it fails, it falls back to the baked defaults. Controls: Tab arm L/R, WASD/EQ for XYZ, J/L/I/K/U/O for yaw/pitch/roll, Z/X grip +/- (gamepad: sticks for pose, LB/RB grip).
+
+## Next polish items
+- Add optional velocity/position clamping and precision scaling inside the IK bridge.
+- Improve frame handling for additional named frames (`left_gripper_tcp`, etc.) if the USD exposes them.
+- Timeouts: currently we “hold last target” when packets stop; consider a configurable hold-or-freeze option.
+
+## ee_targets v1 schema (current trimmed version)
+- Header: `v=1`, `type="ee_targets"`, `seq` (monotonic), `t` (sender timestamp), `frame` (pose reference, e.g., `torso`), `precision` (optional int, defaults to 0).
+- Arms array (1–2 entries): `{id: "L"|"R", ee_frame: "<tcp_name>", p: [x,y,z] meters, q: [w,x,y,z] unit quaternion, grip: 0..1}`.
+- Fields removed for now: `clutch`, `reset`, `mode`, `active`. We can reintroduce them later if needed.
+
+## Troubleshooting
+- No `[UDP]` lines: check IP/port, firewalls; use `--log_payload` to print full JSON per datagram.
+- Scripted motion appearing: ensure `teleop_agent.py` is launched (it stubs `rule_policy`); other demos may still run scripted policies.
+- If arms collapse once 6DoF is wired in, verify frame alignment (`--frame world|torso`) and add clamping before IK.

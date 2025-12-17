@@ -132,6 +132,8 @@ def main():
     parser = argparse.ArgumentParser(description="Keyboard + optional gamepad ee_targets sender")
     parser.add_argument("--ip", default="127.0.0.1", help="Receiver IP")
     parser.add_argument("--port", type=int, default=5005, help="Receiver UDP port")
+    parser.add_argument("--state-port", type=int, default=5006, help="Receiver state (ee_state) UDP port")
+    parser.add_argument("--state-timeout", type=float, default=2.0, help="Seconds to wait for ee_state reply")
     parser.add_argument("--rate", type=float, default=60.0, help="Send rate Hz")
     parser.add_argument("--frame", default="torso", help="Reference frame name")
     parser.add_argument("--pos-step", type=float, default=0.005, help="Position increment per keypress (m)")
@@ -143,13 +145,47 @@ def main():
     rot_step = math.radians(args.rot_step_deg)
     seq = 0
     dest = (args.ip, args.port)
+    state_dest = (args.ip, args.state_port)
     active_arm = args.start_arm
     precision = 0
 
+    def fetch_initial_state(timeout: float) -> Optional[Dict]:
+        """Ask the teleop agent for current EE poses/grips to avoid jumps."""
+        req = {"type": "ee_state_request"}
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(timeout)
+        try:
+            sock.sendto(json.dumps(req).encode("utf-8"), state_dest)
+            data, _ = sock.recvfrom(4096)
+            msg = json.loads(data.decode("utf-8"))
+            if not isinstance(msg, dict) or msg.get("type") != "ee_state":
+                return None
+            return msg
+        except Exception:
+            return None
+        finally:
+            sock.close()
+
+    initial_state = fetch_initial_state(args.state_timeout)
     arms_state: Dict[str, Dict] = {
         "L": {"p": [0.45, 0.10, 0.85], "q": [1.0, 0.0, 0.0, 0.0], "grip": 1.0, "ee_frame": "left_gripper_tcp"},
         "R": {"p": [0.45, -0.10, 0.85], "q": [1.0, 0.0, 0.0, 0.0], "grip": 1.0, "ee_frame": "right_gripper_tcp"},
     }
+    if initial_state and initial_state.get("arms"):
+        for arm in initial_state["arms"]:
+            arm_id = arm.get("id")
+            if arm_id in ("L", "R"):
+                arms_state[arm_id] = {
+                    "p": list(arm.get("p", arms_state[arm_id]["p"])),
+                    "q": list(quat_normalize(tuple(arm.get("q", arms_state[arm_id]["q"])))),
+                    "grip": float(arm.get("grip", arms_state[arm_id]["grip"])),
+                    "ee_frame": arm.get("ee_frame", arms_state[arm_id]["ee_frame"]),
+                }
+        if "frame" in initial_state and initial_state["frame"]:
+            args.frame = initial_state["frame"]
+        print(f"[INFO] Seeded poses from teleop agent ({len(initial_state['arms'])} arms), frame={args.frame}")
+    else:
+        print("[WARN] Could not fetch initial ee_state; using defaults.")
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     send_period = 1.0 / args.rate
