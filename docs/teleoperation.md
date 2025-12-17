@@ -48,12 +48,10 @@
    - Scenarios: single-arm free, dual-arm free, insert/rotate alignment/roll emphasis, clutch hold/release, precision toggle, reset edge, timeout hold, gripper deadband.
    - Verify `frame`/`ee_frame` names against the USD and document them.
 
-## New pre–Vision Pro code (this repo)
-- `teleop/ee_targets.py`: UDP receiver and JSON validation, seq ordering, reset edge tracking.
-- `teleop/filters.py`: clutch/timeout/reset-aware pose + grip filtering (LPF + deadband) ready for downstream IK.
-- `teleop/math_utils.py`: minimal quaternion helpers for senders/filters.
-- `teleop/keyboard_gamepad_sender.py`: keyboard sender with optional gamepad (pygame) emitting ee_targets v1.
-- `teleop/test_hardcoded_sender.py`: canned packet sender for smoke tests (no input devices).
+## New pre–Vision Pro code
+- Root repo (senders + tests): `teleop/keyboard_gamepad_sender.py`, `teleop/test_hardcoded_sender.py`, `teleop/math_utils.py`.
+- gearboxAssembly submodule (agent side): `scripts/teleop_utils/ee_targets.py`, `scripts/teleop_utils/filters.py`, `scripts/teleop_utils/math_utils.py`.
+- Isaac scene (teleop receiver): `scripts/basic/assembly_scene_teleop_demo.py` now consumes ee_targets v1 via `EETargetsReceiver` → `PoseCommandFilter` → DiffIK.
 
 ## Usage (pre–Vision Pro)
 ### 0) Hardcoded smoke test (no devices)
@@ -76,12 +74,21 @@ Controls (latched toggles in this script):
 - Z/X: grip +/- (0..1)
 Gamepad (if pygame + controller present): left stick XY, triggers for ±Z/roll, A=clutch, B=precision, X=reset, LB/RB grip.
 
-### 2) Bridging into Isaac Sim (concept)
-- Keep UDP receive in `teleop/ee_targets.py` and filtering in `teleop/filters.py`.
-- In `assembly_scene_teleop_demo.py`, replace the joint-degree path with:
-  - `receiver.get_latest()` → `PoseCommandFilter.update(...)` → (per-arm pose targets)
-  - feed pose targets into the existing `DifferentialIKController` to produce joint targets.
-- Apply clutch/timeout gating before writing joint targets; on `reset` edge, snap targets to current EE pose before the next IK step.
+### 2) Isaac Sim teleop (gearboxAssembly/teleop branch)
+Run the scene (after switching submodule to the `teleop` branch):
+```
+python submodules/gearboxAssembly/scripts/basic/assembly_scene_teleop_demo.py
+```
+The script now:
+- Listens on UDP 5005 for ee_targets v1 (clutch/precision/reset/seq/arms)
+- Filters via `PoseCommandFilter` (LPF + deadband + timeout/hold + reset snap)
+- Feeds per-arm pose into DiffIK to set joint targets and grippers (0..1 scaled to ~0.04)
+- Leaves scripted/rule-based mode intact; toggle teleop with `T` in the terminal
+
+### 3) Validation ideas
+- Use `teleop/test_hardcoded_sender.py` to prove seq ordering, clutch hold, reset edge, and per-mode payloads.
+- Use `teleop/keyboard_gamepad_sender.py` to check continuous control and gripper deadband; verify the receiver drops stale packets and times out to hold.
+- Log filtered pose targets + final joint commands to compare IK output vs. requested EE targets.
 
 ### 3) Validation ideas
 - Use `teleop/test_hardcoded_sender.py` to prove seq ordering, clutch hold, reset edge, and per-mode payloads.
