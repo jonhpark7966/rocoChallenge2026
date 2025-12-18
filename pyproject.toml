@@ -13,6 +13,7 @@ dependencies = [
     "tqdm",
     "matplotlib",
     "streamlit",
+    "websockets",
 ]
 
 [project.optional-dependencies]

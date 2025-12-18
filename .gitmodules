@@ -4,3 +4,6 @@
 [submodule "IsaacLab"]
 	path = submodules/IsaacLab
 	url = https://github.com/isaac-sim/IsaacLab.git
+[submodule "submodules/vision-lerobot-teleop"]
+	path = submodules/vision-lerobot-teleop
+	url = git@github.com:jonhpark7966/vision-lerobot-teleop.git
