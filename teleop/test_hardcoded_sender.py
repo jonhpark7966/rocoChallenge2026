@@ -77,10 +77,12 @@ def main():
     args = parser.parse_args()
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    base_seq = time.time_ns()
     try:
-        for scenario in SCENARIOS:
+        for idx, scenario in enumerate(SCENARIOS):
             packet = dict(scenario["packet"])
             packet["t"] = time.time()
+            packet["seq"] = base_seq + idx
             print(f"[SEND] {scenario['desc']} seq={packet['seq']}")
             sock.sendto((json.dumps(packet) + "\n").encode("utf-8"), (args.ip, args.port))
             time.sleep(args.delay)

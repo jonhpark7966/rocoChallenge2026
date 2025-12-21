@@ -20,6 +20,18 @@ from teleop.io_udp import request_ee_state, send_udp_json
 from teleop.vp_protocol import VpHandsFrame, parse_vp_hands
 
 
+DEFAULT_ANCHORS = {
+    "L": {"p": (0.45, 0.10, 0.85), "q": (1.0, 0.0, 0.0, 0.0), "grip": 1.0},
+    "R": {"p": (0.45, -0.10, 0.85), "q": (1.0, 0.0, 0.0, 0.0), "grip": 1.0},
+}
+
+
+def seed_default_anchor(mapper: HandToEEMapper) -> None:
+    for arm_id, anchor in DEFAULT_ANCHORS.items():
+        mapper.set_robot_anchor(arm_id, anchor["p"], anchor["q"], anchor["grip"])
+    print("[INFO] ee_state unavailable; using default anchors for dry-run")
+
+
 def load_frames(path: str) -> List[Tuple[float, VpHandsFrame]]:
     opener = gzip.open if path.endswith(".gz") else open
     frames: List[Tuple[float, VpHandsFrame]] = []
@@ -75,13 +87,14 @@ def replay(
 
     def _run_once() -> None:
         mapper.reset_hand_anchors()
-        if not args.dry_run:
-            state = request_ee_state(args.udp_ip, args.state_port, args.state_timeout)
-            if state:
-                mapper.update_robot_anchor_from_state(state)
-                print("[INFO] robot anchor updated from ee_state")
-            else:
-                print("[WARN] ee_state request timed out; mapping disabled until anchor is set")
+        state = request_ee_state(args.udp_ip, args.state_port, args.state_timeout)
+        if state:
+            mapper.update_robot_anchor_from_state(state)
+            print("[INFO] robot anchor updated from ee_state")
+        elif args.dry_run:
+            seed_default_anchor(mapper)
+        else:
+            print("[WARN] ee_state request timed out; mapping disabled until anchor is set")
 
         prev_t = None
         for t_rel, frame in normalized:

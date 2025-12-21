@@ -51,6 +51,9 @@ class BridgeRuntime:
         self.send_udp = self.forward and not args.no_udp_send
         self.log_map = args.log_map
         self.log_map_every = max(1, args.log_map_every)
+        self.log_bad = args.log_bad
+        self.log_bad_max = max(0, args.log_bad_max)
+        self.log_bad_bytes = max(0, args.log_bad_bytes)
         axis_map = parse_axis_map(args.axis_map) if args.axis_map else None
         self.mapper = HandToEEMapper(
             pos_scale=args.pos_scale,
@@ -66,6 +69,7 @@ class BridgeRuntime:
         self._last_print = time.time()
         self._msg_count = 0
         self._bad_count = 0
+        self._bad_logged = 0
         self._frame_index = 0
 
     def start(self) -> None:
@@ -95,6 +99,9 @@ class BridgeRuntime:
                     "no_udp_send": self.args.no_udp_send,
                     "log_map": self.args.log_map,
                     "log_map_every": self.log_map_every,
+                    "log_bad": self.log_bad,
+                    "log_bad_max": self.log_bad_max,
+                    "log_bad_bytes": self.log_bad_bytes,
                 },
             }
         )
@@ -152,6 +159,7 @@ class BridgeRuntime:
         frame = parse_vp_hands_json(payload)
         if not frame:
             self._bad_count += 1
+            self._maybe_log_bad(payload, now)
             return
         self._msg_count += 1
         self.logger.write({"type": "vp_hands", "t_recv": now, "msg": frame.raw})
@@ -198,6 +206,27 @@ class BridgeRuntime:
             }
         )
 
+    def _maybe_log_bad(self, payload: str | bytes, now: float) -> None:
+        if not self.log_bad:
+            return
+        if self._bad_logged >= self.log_bad_max:
+            return
+        self._bad_logged += 1
+        if isinstance(payload, bytes):
+            raw = payload.decode("utf-8", errors="replace")
+        else:
+            raw = payload
+        if self.log_bad_bytes and len(raw) > self.log_bad_bytes:
+            raw = raw[: self.log_bad_bytes]
+        self.logger.write(
+            {
+                "type": "vp_hands_bad",
+                "t_recv": now,
+                "payload": raw,
+                "payload_len": len(raw),
+            }
+        )
+
 
 async def serve(args: argparse.Namespace) -> None:
     if websockets is None:
@@ -240,6 +269,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-udp-send", action="store_true", help="Do not send UDP (log only)")
     parser.add_argument("--log-map", action="store_true", help="Log mapping debug info")
     parser.add_argument("--log-map-every", type=int, default=1, help="Log mapping every N frames")
+    parser.add_argument("--log-bad", action="store_true", help="Log invalid vp_hands payloads")
+    parser.add_argument("--log-bad-max", type=int, default=20, help="Max invalid payloads to log")
+    parser.add_argument("--log-bad-bytes", type=int, default=512, help="Max bytes per invalid payload")
     parser.add_argument("--frame", default="world", help="ee_targets frame")
     parser.add_argument("--pos-scale", type=float, default=1.0, help="Position scale factor")
     parser.add_argument("--rot-scale", type=float, default=1.0, help="Rotation scale factor")

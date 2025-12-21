@@ -143,7 +143,7 @@ def main():
     args = parser.parse_args()
 
     rot_step = math.radians(args.rot_step_deg)
-    seq = 0
+    seq = time.time_ns()
     dest = (args.ip, args.port)
     state_dest = (args.ip, args.state_port)
     active_arm = args.start_arm
@@ -257,7 +257,7 @@ def main():
 
                 packet = build_packet(seq, args.frame, precision, arms_state)
                 sock.sendto(json.dumps(packet).encode("utf-8"), dest)
-                seq += 1
+                seq = max(seq + 1, time.time_ns())
 
                 elapsed = time.time() - start
                 to_sleep = send_period - elapsed
