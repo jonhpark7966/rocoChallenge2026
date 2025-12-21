@@ -20,6 +20,7 @@ uv run python scripts/roco_hdf5_viewer.py --help
 ### Submodules
 - `submodules/gearboxAssembly` — task code & Omniverse extension (fork).
 - `submodules/IsaacLab` — upstream Isaac Lab.
+- `submodules/isaac-xr-teleop-sample-client-apple` — Apple Vision Pro CloudXR teleop sample client.
 
 필요하면 최신으로:
 ```bash

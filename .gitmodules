@@ -7,3 +7,6 @@
 [submodule "submodules/vision-lerobot-teleop"]
 	path = submodules/vision-lerobot-teleop
 	url = git@github.com:jonhpark7966/vision-lerobot-teleop.git
+[submodule "submodules/isaac-xr-teleop-sample-client-apple"]
+	path = submodules/isaac-xr-teleop-sample-client-apple
+	url = git@github.com:isaac-sim/isaac-xr-teleop-sample-client-apple.git
