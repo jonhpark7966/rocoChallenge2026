@@ -1,10 +1,5 @@
 # Teleoperation (CloudXR + Apple Vision Pro)
 
-이 문서는 기존 ws/UDP 텔레옵 파이프라인을 중단하고, **IsaacLab 공식 CloudXR + Apple Vision Pro 샘플** 흐름으로 재구성하기 위한 기준 문서입니다.
-레거시 문서는 백업했습니다:
-- `docs/teleoperation_legacy.md`
-- `docs/teleop_debugging_legacy.md`
-
 ---
 
 ## 0. 목표 (Baseline 먼저)
@@ -73,15 +68,74 @@ git checkout v2.3.0
 
 ---
 
-## 3. Galaxea R1 통합 계획 (초안)
-- Galaxea R1 환경에서 XR 입력을 받기 위한 **teleop device 설정** 추가
-- OpenXRDevice + Se3Abs/Se3Rel + GripperRetargeter 구성
-- R1 IK 타겟 링크 기준: `left_arm_link6`, `right_arm_link6`
-- 그리퍼 조인트: `left_gripper_axis1`, `right_gripper_axis1`
-- 최종 목표: CloudXR + AVP 입력으로 R1 조립 가능하게 만들기
+## 3. Galaxea R1 통합 (OpenXR Teleop)
+
+### 3.1 실행 (Template-Galaxea-Lab-Agent-Direct-v0)
+```bash
+./isaaclab.sh -p submodules/gearboxAssembly/scripts/teleop_r1_agent.py \
+  --task Template-Galaxea-Lab-Agent-Direct-v0 \
+  --teleop_device handtracking
+```
+
+### 3.2 CLI 옵션
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--task` | `Template-Galaxea-Lab-Agent-Direct-v0` | 환경 이름 |
+| `--teleop_device` | `handtracking` | 입력 장치 (handtracking, keyboard) |
+| `--view_mode` | `headcam` | XR 뷰 모드 (headcam, world) |
+| `--anchor_mode` | `world` | XR 앵커 모드 (headcam, world) |
+| `--gripper_open` | `0.04` | 그리퍼 열림 위치 (m) |
+| `--gripper_close` | `0.0` | 그리퍼 닫힘 위치 (m) |
+| `--record` | - | 데이터 녹화 활성화 |
+| `--record_dir` | `./data/teleop_demos` | 녹화 저장 경로 |
+| `--visualize_targets` | - | EE 타겟 마커 표시 |
+| `--hand_markers` | - | 손 마커 표시 |
+| `--no_randomize_objects` | - | 물체 고정 배치 |
+
+### 3.3 데이터 녹화
+```bash
+./isaaclab.sh -p submodules/gearboxAssembly/scripts/teleop_r1_agent.py \
+  --task Template-Galaxea-Lab-Agent-Direct-v0 \
+  --teleop_device handtracking \
+  --record \
+  --record_dir ./data/teleop_demos
+```
+
+녹화 데이터는 HDF5 형식으로 저장됩니다:
+```
+episode_N.h5
+├── observations/
+│   ├── head_rgb              (T, H, W, 3) uint8
+│   ├── left_hand_rgb         (T, H, W, 3) uint8
+│   ├── right_hand_rgb        (T, H, W, 3) uint8
+│   ├── left_arm_joint_pos    (T, 6) float32
+│   ├── right_arm_joint_pos   (T, 6) float32
+│   ├── left_gripper_pos      (T, 1) float32
+│   └── right_gripper_pos     (T, 1) float32
+├── actions/
+│   ├── left_arm_action       (T, 6) float32
+│   ├── right_arm_action      (T, 6) float32
+│   ├── left_gripper          (T, 1) float32
+│   └── right_gripper         (T, 1) float32
+└── attrs: {sim: True, timestamp: ...}
+```
+
+### 3.4 XR 제스처
+- **START**: 엄지와 검지를 핀치 후 release → 텔레옵 활성화 + 녹화 시작
+- **STOP**: 다시 핀치 후 release → 텔레옵 비활성화 + 녹화 저장
+- **RESET**: 별도 제스처 또는 키보드 'R' → 환경 리셋
+
+### 3.5 설정 메모
+- R1 IK 타겟 링크: `left_arm_link6`, `right_arm_link6`
+- 그리퍼 조인트: `left_gripper_axis1`, `right_gripper_axis1` (0.0-0.04m)
+- XR 앵커가 맞지 않으면 Isaac Sim XR 패널에서 Anchor 위치를 조정
+- Reanchoring: START 시 현재 로봇 EE 포즈와 XR 손 위치의 오프셋을 자동 계산
 
 ---
 
 ## 4. 참고
 - 공식 가이드: `submodules/IsaacLab/docs/source/how-to/cloudxr_teleoperation.rst`
 - Baseline 스크립트: `scripts/cloudxr/run_isaaclab_baseline.sh`
+- Teleop 스크립트: `submodules/gearboxAssembly/scripts/teleop_r1_agent.py`
+- Data Recorder: `submodules/gearboxAssembly/scripts/teleop_data_recorder.py`

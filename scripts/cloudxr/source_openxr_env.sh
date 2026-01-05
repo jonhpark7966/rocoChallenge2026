@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-set -euo pipefail
+
+# Avoid changing the caller's shell options when sourced.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  set -euo pipefail
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=_env.sh

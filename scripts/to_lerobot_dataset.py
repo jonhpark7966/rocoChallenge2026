@@ -216,19 +216,29 @@ def read_roco_hdf5(file_path: Path) -> Dict[str, np.ndarray]:
 
     # 2. 액션 (Action)
     # [actions]
-    # left_arm_action, left_gripper_action, right_arm_action, right_gripper_action
-    
+    # Environment order: left_arm(6) + right_arm(6) + left_gripper(1) + right_gripper(1)
+    #
+    # Support both key variants that appear across scripts:
+    # - actions/left_gripper_action vs actions/left_gripper
+    # - actions/right_gripper_action vs actions/right_gripper
+    def get_first_key(keys):
+        for k in keys:
+            val = get_and_ensure_2d(k)
+            if val is not None:
+                return val
+        return None
+
     action_components = [
-        "actions/left_arm_action",  
-        "actions/left_gripper_action", 
-        "actions/right_arm_action",
-        "actions/right_gripper_action",
+        ("actions/left_arm_action",),
+        ("actions/right_arm_action",),
+        ("actions/left_gripper_action", "actions/left_gripper"),
+        ("actions/right_gripper_action", "actions/right_gripper"),
     ]
-    
+
     collected_actions = []
-    
-    for k in action_components:
-        val = get_and_ensure_2d(k)
+
+    for keys in action_components:
+        val = get_first_key(keys)
         if val is not None:
             collected_actions.append(val)
     
